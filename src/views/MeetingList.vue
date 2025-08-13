@@ -1,132 +1,252 @@
 <template>
-  <div class="page-container">
-    <div class="flex-between mb-20">
-      <h2>会议列表</h2>
-      <el-button type="primary" @click="handleCreate">
-        <el-icon><Plus /></el-icon>
-        新建会议
-      </el-button>
-    </div>
-
-    <el-card class="card-container">
-      <el-form :inline="true" :model="searchForm" class="demo-form-inline">
-        <el-form-item label="搜索">
-          <el-input v-model="searchForm.keyword" placeholder="会议名称/发起人/类型" />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="handleSearch">查询</el-button>
-          <el-button @click="resetSearch">重置</el-button>
-        </el-form-item>
+  <div>
+    <el-card class="search-card">
+      <el-form :model="searchForm" label-width="100px">
+        <el-row :gutter="20">
+          <el-col :span="8">
+            <el-form-item label="会议名称">
+              <el-input v-model="searchForm.meetingName" placeholder="请输入会议名称" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="发起人">
+              <el-input v-model="searchForm.organizer" placeholder="请输入发起人" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="会议类型">
+              <el-select v-model="searchForm.meetingType" placeholder="请选择会议类型" clearable style="width: 100%;">
+                <el-option label="项目会议" value="project" />
+                <el-option label="部门会议" value="department" />
+                <el-option label="全体会议" value="general" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="8">
+            <el-form-item label="开始时间">
+              <el-date-picker
+                v-model="searchForm.startTime"
+                type="datetime"
+                placeholder="请选择开始时间"
+                style="width: 100%;"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="结束时间">
+              <el-date-picker
+                v-model="searchForm.endTime"
+                type="datetime"
+                placeholder="请选择结束时间"
+                style="width: 100%;"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item>
+              <el-button type="primary" @click="searchMeetings">查询</el-button>
+              <el-button @click="resetSearch">重置</el-button>
+            </el-form-item>
+          </el-col>
+        </el-row>
       </el-form>
     </el-card>
 
-    <el-card class="card-container">
-      <el-table :data="tableData" style="width: 100%">
-        <el-table-column prop="name" label="会议名称" />
+    <el-card style="margin-top: 20px;">
+      <el-table :data="meetings" border style="width: 100%">
+        <el-table-column prop="meetingName" label="会议名称" />
         <el-table-column prop="organizer" label="发起人" />
-        <el-table-column prop="type" label="会议类型" />
-        <el-table-column prop="startTime" label="开始时间" />
-        <el-table-column prop="endTime" label="结束时间" />
-        <el-table-column label="与会人员">
+        <el-table-column prop="meetingType" label="会议类型">
           <template #default="scope">
-            {{ scope.row.attendees.join(', ') }}
+            <el-tag :type="getMeetingTypeTag(scope.row.meetingType)">
+              {{ getMeetingTypeName(scope.row.meetingType) }}
+            </el-tag>
           </template>
         </el-table-column>
+        <el-table-column prop="startTime" label="开始时间">
+          <template #default="scope">
+            {{ formatDate(scope.row.startTime) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="endTime" label="结束时间">
+          <template #default="scope">
+            {{ formatDate(scope.row.endTime) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="participants" label="与会人员" />
         <el-table-column label="操作" width="200">
           <template #default="scope">
-            <el-button size="small" @click="handleView(scope.row)">查看</el-button>
-            <el-button size="small" @click="handleEdit(scope.row)">编辑</el-button>
+            <el-button size="small" @click="viewMeeting(scope.row.id)">查看</el-button>
+            <el-button size="small" @click="editMeeting(scope.row.id)">编辑</el-button>
+            <el-button size="small" type="danger" @click="deleteMeeting(scope.row.id)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
 
-      <div class="pagination-container">
-        <el-pagination
-          v-model:current-page="pagination.currentPage"
-          v-model:page-size="pagination.pageSize"
-          :page-sizes="[10, 20, 50]"
-          :total="pagination.total"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
-        />
-      </div>
+      <el-pagination
+        style="margin-top: 20px; text-align: right;"
+        v-model:current-page="pagination.currentPage"
+        v-model:page-size="pagination.pageSize"
+        :page-sizes="[10, 20, 50]"
+        :total="pagination.total"
+        layout="total, sizes, prev, pager, next, jumper"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+      />
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, reactive } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { useMeetingStore } from '../stores/meetingStore';
-import { Plus } from '@element-plus/icons-vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
 
 const router = useRouter();
-const meetingStore = useMeetingStore();
 
-const tableData = ref([]);
-const pagination = reactive({
+// 搜索表单
+const searchForm = ref({
+  meetingName: '',
+  organizer: '',
+  meetingType: '',
+  startTime: '',
+  endTime: ''
+});
+
+// 分页信息
+const pagination = ref({
   currentPage: 1,
   pageSize: 10,
   total: 0
 });
 
-const searchForm = reactive({
-  keyword: ''
-});
+// 会议数据
+const meetings = ref([]);
 
-const fetchData = () => {
-  const result = meetingStore.getMeetings(
-    pagination.currentPage,
-    pagination.pageSize,
-    searchForm.keyword
-  );
-  tableData.value = result.data;
-  pagination.total = result.total;
+// 会议类型映射
+const meetingTypeMap = {
+  project: '项目会议',
+  department: '部门会议',
+  general: '全体会议'
 };
 
-const handleCreate = () => {
-  router.push('/meeting/new');
+// 获取会议类型标签类型
+const getMeetingTypeTag = (type) => {
+  const tagMap = {
+    project: 'primary',
+    department: 'success',
+    general: 'warning'
+  };
+  return tagMap[type] || 'info';
 };
 
-const handleView = (row) => {
-  router.push(`/meeting/${row.id}`);
+// 获取会议类型名称
+const getMeetingTypeName = (type) => {
+  return meetingTypeMap[type] || '未知类型';
 };
 
-const handleEdit = (row) => {
-  router.push(`/meeting/edit/${row.id}`);
+// 格式化日期
+const formatDate = (date) => {
+  if (!date) return '';
+  const d = new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
 
-const handleSearch = () => {
-  pagination.currentPage = 1;
-  fetchData();
+// 查询会议
+const searchMeetings = () => {
+  // 模拟API调用
+  const mockData = [
+    {
+      id: 1,
+      meetingName: '项目启动会议',
+      organizer: '张三',
+      meetingType: 'project',
+      startTime: '2023-05-15T09:00:00',
+      endTime: '2023-05-15T11:00:00',
+      participants: '张三, 李四, 王五'
+    },
+    {
+      id: 2,
+      meetingName: '部门月度总结',
+      organizer: '李四',
+      meetingType: 'department',
+      startTime: '2023-05-16T14:00:00',
+      endTime: '2023-05-16T16:00:00',
+      participants: '李四, 赵六, 孙七'
+    },
+    {
+      id: 3,
+      meetingName: '公司年中规划',
+      organizer: '王总',
+      meetingType: 'general',
+      startTime: '2023-05-17T10:00:00',
+      endTime: '2023-05-17T12:00:00',
+      participants: '王总, 张三, 李四, 王五, 赵六'
+    }
+  ];
+
+  meetings.value = mockData;
+  pagination.value.total = mockData.length;
 };
 
+// 重置搜索
 const resetSearch = () => {
-  searchForm.keyword = '';
-  pagination.currentPage = 1;
-  fetchData();
+  searchForm.value = {
+    meetingName: '',
+    organizer: '',
+    meetingType: '',
+    startTime: '',
+    endTime: ''
+  };
+  searchMeetings();
 };
 
+// 查看会议详情
+const viewMeeting = (id) => {
+  router.push(`/meeting/${id}`);
+};
+
+// 编辑会议
+const editMeeting = (id) => {
+  router.push(`/edit/${id}`);
+};
+
+// 删除会议
+const deleteMeeting = (id) => {
+  ElMessageBox.confirm('确定要删除这个会议吗？', '提示', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(() => {
+    // 模拟API调用
+    ElMessage.success('删除成功');
+    searchMeetings();
+  }).catch(() => {
+    // 用户取消删除
+  });
+};
+
+// 分页相关方法
 const handleSizeChange = (val) => {
-  pagination.pageSize = val;
-  fetchData();
+  pagination.value.pageSize = val;
+  searchMeetings();
 };
 
 const handleCurrentChange = (val) => {
-  pagination.currentPage = val;
-  fetchData();
+  pagination.value.currentPage = val;
+  searchMeetings();
 };
 
+// 组件挂载时查询数据
 onMounted(() => {
-  fetchData();
+  searchMeetings();
 });
 </script>
 
 <style scoped>
-.pagination-container {
-  margin-top: 20px;
-  display: flex;
-  justify-content: flex-end;
+.search-card {
+  margin-bottom: 20px;
 }
 </style>
